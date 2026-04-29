@@ -1,0 +1,30 @@
+{
+  "playbooks": [
+    {
+      "file": "research.md",
+      "title": "Research-фаза: сбор внешней информации",
+      "triggers": ["исследуй", "research", "разберись", "найди инфу", "изучи рынок",
+                   "анализ конкурентов", "обзор", "сравни", "compare", "investigate"]
+    },
+    {
+      "file": "content.md",
+      "title": "Long content generation: 20+ единиц / лонгрид",
+      "triggers": ["напиши серию", "посты", "статья", "лонгрид", "контент",
+                   "напиши книгу", "генерация постов", "tg-канал", "канал в",
+                   "telegram", "блог", "30 постов", "статьи"]
+    },
+    {
+      "file": "browsing.md",
+      "title": "Web browsing через Playwright (SPA, login, JS)",
+      "triggers": ["войди в", "login", "залогинься", "форма", "register",
+                   "spa", "interactive", "клик", "scroll", "интерактивный"]
+    }
+  ],
+  "knowledge_files": [
+    {
+      "file": "../knowledge/cloudru_models.md",
+      "title": "Cloud.ru FM models cheatsheet",
+      "triggers": ["cloud.ru", "qwen", "minimax", "glm", "fm api"]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Envs
+.venv/
+venv/
+.env
+.env.local
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Manus runtime artifacts
+~/manus/
+manus/__pycache__/
+manus/**/*.pyc
+sessions.db
+state.db
+*.log

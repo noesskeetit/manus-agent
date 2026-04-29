@@ -1,0 +1,68 @@
+[project]
+name = "manus-agent"
+version = "0.2.0"
+description = "Autonomous AI agent in the Manus.im style — own agent loop, hierarchical context compaction, file-as-memory, sub-agents, designed for long-running tasks"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Alex Ogabbasov"}]
+requires-python = ">=3.11"
+keywords = ["ai", "agent", "llm", "manus", "autonomous", "tool-use"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "openai>=1.50.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.5.0",
+    "tenacity>=8.2.0",
+    "tiktoken>=0.6.0",
+    "rich>=13.7.0",
+    "typer>=0.12.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "duckduckgo-search>=6.1.0",
+    "beautifulsoup4>=4.12.0",
+    "playwright>=1.45.0",
+]
+
+[project.optional-dependencies]
+observability = [
+    "arize-phoenix>=4.0.0",
+    "openinference-instrumentation-openai>=0.1.10",
+    "opentelemetry-sdk>=1.24.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.24.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/noesskeetit/manus-agent"
+Repository = "https://github.com/noesskeetit/manus-agent"
+Issues = "https://github.com/noesskeetit/manus-agent/issues"
+
+[project.scripts]
+manus = "manus.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["manus"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-ra -q"
+markers = [
+    "integration: live LLM-API integration tests (require LLM_API_KEY)",
+]
