@@ -23,24 +23,40 @@ def _make_ctx(messages=None, model=None):
 
 # ---------- Stage 1: SNIP ----------
 
+def _tool_msgs(n, content):
+    return [
+        {"role": "tool", "tool_call_id": f"c{i}", "content": content}
+        for i in range(n)
+    ]
+
+
 def test_snip_long_tool_result(fake_model, long_tool_result_content):
+    """Старые длинные tool results снипуются (свежие 3 — нет, см. ниже)."""
     cw = _make_ctx(model=fake_model, messages=[
         {"role": "user", "content": "do thing"},
-        {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "function": {"name": "f", "arguments": "{}"}}]},
-        {"role": "tool", "tool_call_id": "c1", "content": long_tool_result_content},
+        *_tool_msgs(4, long_tool_result_content),
     ])
     changed = cw._stage_snip()
     assert changed is True
-    snipped = cw.messages[2]["content"]
+    snipped = cw.messages[1]["content"]
     assert "[snipped" in snipped
     assert len(snipped) < len(long_tool_result_content)
 
 
+def test_snip_spares_recent_tool_results(fake_model, long_tool_result_content):
+    """Политика модуля: последние 3 tool results не сжимаются."""
+    cw = _make_ctx(model=fake_model, messages=_tool_msgs(5, long_tool_result_content))
+    changed = cw._stage_snip()
+    assert changed is True
+    for m in cw.messages[:2]:
+        assert "[snipped" in m["content"]
+    for m in cw.messages[2:]:
+        assert m["content"] == long_tool_result_content
+
+
 def test_snip_idempotent(fake_model, long_tool_result_content):
     """Повторный snip не должен ломать уже сжатое содержимое."""
-    cw = _make_ctx(model=fake_model, messages=[
-        {"role": "tool", "tool_call_id": "c1", "content": long_tool_result_content},
-    ])
+    cw = _make_ctx(model=fake_model, messages=_tool_msgs(4, long_tool_result_content))
     cw._stage_snip()
     after_first = cw.messages[0]["content"]
     cw._stage_snip()
@@ -166,3 +182,30 @@ def test_context_serialize_round_trip(fake_model):
     assert cw2.pinned_facts == ["F"]
     assert cw2.summaries == ["S"]
     assert any(m.get("content") == "hello" for m in cw2.messages)
+
+
+# ---------- Pinned facts: protected vs FIFO ----------
+
+def test_protected_pins_survive_fifo(fake_model):
+    cw = _make_ctx(model=fake_model)
+    cw.auto_pin("original task: build the thing", protected=True)
+    cw.auto_pin("workspace: /tmp/ws", protected=True)
+    for i in range(35):
+        cw.auto_pin(f"observation: file-{i}.txt")
+    assert "original task: build the thing" in cw.protected_facts
+    assert "workspace: /tmp/ws" in cw.protected_facts
+    assert len(cw.pinned_facts) <= 30
+    # Старейшие обычные выселены, новейшие живы
+    assert "observation: file-0.txt" not in cw.pinned_facts
+    assert "observation: file-34.txt" in cw.pinned_facts
+    # В assemble protected рендерятся в system-блоке
+    msgs, _ = cw.assemble()
+    assert "original task: build the thing" in msgs[0]["content"]
+
+
+def test_load_dict_without_protected_facts_key(fake_model):
+    """Старые state.json (до protected_facts) загружаются без падения."""
+    cw = _make_ctx(model=fake_model)
+    cw.load_dict({"messages": [], "summaries": [], "pinned_facts": ["a"]})
+    assert cw.pinned_facts == ["a"]
+    assert cw.protected_facts == []

@@ -228,9 +228,11 @@ class Agent:
                 "Начни: декомпозируй задачу, обнови todo.md, начинай работу. "
                 "По завершении — summary.md и idle()."
             )
-            # Pin task_text — должен пережить любую compaction
-            self.context.auto_pin(f"original task: {self.workspace.task_text[:300]}")
-            self.context.auto_pin(f"workspace: {self.workspace.root}")
+            # Pin task_text — должен пережить любую compaction и FIFO-кап пинов
+            self.context.auto_pin(
+                f"original task: {self.workspace.task_text[:300]}", protected=True
+            )
+            self.context.auto_pin(f"workspace: {self.workspace.root}", protected=True)
         self.state.phase = AgentPhase.EXECUTING
         # Засекаем стартовую точку текущей сессии. elapsed_session_seconds — accumulator
         # из предыдущих run'ов (если resume), сюда добавляем (now - session_start_local).

@@ -77,6 +77,7 @@ class ContextWindow:
     messages: list[dict] = field(default_factory=list)   # дельта turns (assistant/tool/user)
     summaries: list[str] = field(default_factory=list)   # накопленные summary блоков
     pinned_facts: list[str] = field(default_factory=list)  # критичные факты (URLs, IDs)
+    protected_facts: list[str] = field(default_factory=list)  # невыселяемые (task, workspace)
 
     @property
     def max_ctx(self) -> int:
@@ -101,7 +102,11 @@ class ContextWindow:
     def add_tool_result(self, tool_call_id: str, content: str) -> None:
         self.messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": content})
 
-    def pin_fact(self, fact: str) -> None:
+    def pin_fact(self, fact: str, protected: bool = False) -> None:
+        if protected:
+            if fact not in self.protected_facts:
+                self.protected_facts.append(fact)
+            return
         if fact not in self.pinned_facts:
             self.pinned_facts.append(fact)
 
@@ -120,9 +125,10 @@ class ContextWindow:
         """
         # 1. Stable system prefix
         sys_parts: list[str] = [self.system_prompt]
-        if self.pinned_facts:
+        all_pins = self.protected_facts + self.pinned_facts
+        if all_pins:
             sys_parts.append("\n\n# === Pinned facts — never forget ===\n\n"
-                             + "\n".join(f"- {f}" for f in self.pinned_facts))
+                             + "\n".join(f"- {f}" for f in all_pins))
         for i, summary in enumerate(self.summaries):
             sys_parts.append(f"\n\n# === History summary block {i+1} ===\n\n{summary}")
 
@@ -197,16 +203,25 @@ class ContextWindow:
 
     # ---- Stage 1: SNIP ----
 
+    # Сколько последних tool results snip не трогает (политика из докстринга
+    # модуля: модель активно работает со свежими наблюдениями).
+    SNIP_SPARE_RECENT_TOOLS = 3
+
     def _stage_snip(self) -> bool:
-        """Head+tail на длинных tool_results in-place. Без LLM."""
+        """Head+tail на длинных tool_results in-place, кроме последних
+        SNIP_SPARE_RECENT_TOOLS tool-сообщений. Без LLM."""
         if not self.messages:
             return False
         head_n = CONFIG.snip_keep_head
         tail_n = CONFIG.snip_keep_tail
         min_size = CONFIG.snip_min_size
+        tool_indexes = [
+            i for i, m in enumerate(self.messages) if m.get("role") == "tool"
+        ]
+        spared = set(tool_indexes[-self.SNIP_SPARE_RECENT_TOOLS:])
         snipped = 0
-        for m in self.messages:
-            if m.get("role") != "tool":
+        for i, m in enumerate(self.messages):
+            if m.get("role") != "tool" or i in spared:
                 continue
             content = m.get("content", "") or ""
             if len(content) < min_size:
@@ -363,9 +378,17 @@ class ContextWindow:
 
     # ---- Auto-pin facts (вызывается из agent.py) ----
 
-    def auto_pin(self, fact: str) -> None:
-        """Auto-add fact to pinned (with dedup)."""
+    def auto_pin(self, fact: str, protected: bool = False) -> None:
+        """Auto-add fact to pinned (with dedup).
+
+        protected=True — факт не подпадает под FIFO-кап и переживает всю
+        сессию (исходная задача, workspace). Обычные пины ограничены 30.
+        """
         if not fact or len(fact) > 500:
+            return
+        if protected:
+            if fact not in self.protected_facts:
+                self.protected_facts.append(fact)
             return
         if fact in self.pinned_facts:
             return
@@ -425,12 +448,15 @@ class ContextWindow:
             "messages": self.messages,
             "summaries": self.summaries,
             "pinned_facts": self.pinned_facts,
+            "protected_facts": self.protected_facts,
         }
 
     def load_dict(self, d: dict) -> None:
         self.messages = d.get("messages", [])
         self.summaries = d.get("summaries", [])
         self.pinned_facts = d.get("pinned_facts", [])
+        # Старые state.json не имеют protected_facts — дефолт пустой
+        self.protected_facts = d.get("protected_facts", [])
 
 
 # ---------- Helpers ----------
