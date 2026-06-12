@@ -101,22 +101,30 @@ class LLMClient:
             if tool_choice is not None:
                 params["tool_choice"] = tool_choice
 
-        # Cloud.ru-specific: thinking off через extra_body
-        # FM API: thinking{"type":"disabled"}; vLLM: chat_template_kwargs.enable_thinking=false
+        thinking = os.environ.get("MANUS_THINKING", "off").strip().lower() or "off"
+        if thinking not in {"off", "none", "low", "medium", "high"}:
+            raise ValueError("MANUS_THINKING must be one of: off, none, low, medium, high")
+
+        # Cloud.ru-specific reasoning controls.
+        # FM API accepts reasoning_effort=none|low|medium|high. vLLM endpoints
+        # expose only enable_thinking through chat_template_kwargs.
         if "modelrun.inference.cloud.ru" in self.model.api_base:
             params["extra_body"] = {
-                "chat_template_kwargs": {"enable_thinking": False},
+                "chat_template_kwargs": {"enable_thinking": thinking not in {"off", "none"}},
             }
         elif "cloud.ru" in self.model.api_base:
-            params["extra_body"] = {
-                "thinking": {"type": "disabled"},
-            }
+            if thinking in {"off", "none"}:
+                params["reasoning_effort"] = "none"
+            else:
+                params["reasoning_effort"] = thinking
 
         t0 = time.monotonic()
         try:
             completion: ChatCompletion = self._client.chat.completions.create(**params)
         except BadRequestError as e:
             # Some Cloud.ru models reject extra_body keys — retry без него
+            if thinking != "off":
+                raise
             logger.warning("BadRequest with extra_body, retrying without it: %s", e)
             params.pop("extra_body", None)
             completion = self._client.chat.completions.create(**params)
@@ -157,9 +165,11 @@ class LLMClient:
                     truncated=truncated,
                 ))
 
-        # Стрипаем reasoning_content (если есть в raw)
+        # Стрипаем reasoning fields (Cloud.ru может вернуть `reasoning` или
+        # `reasoning_content`, даже если thinking выключен).
         raw_msg = msg.model_dump()
         raw_msg.pop("reasoning_content", None)
+        raw_msg.pop("reasoning", None)
         # Также удаляем function_call (deprecated)
         raw_msg.pop("function_call", None)
 

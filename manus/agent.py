@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -103,7 +104,10 @@ class Agent:
         )
         self.cancel_flag = threading.Event()
         # Стабильный prefix: ВСЕ specs — KV-cache friendly. Маскирование через system prompt.
-        self._all_specs = self.registry.to_openai_specs()
+        # Для небольших OpenAI-compatible endpoints можно включить hard mask через
+        # MANUS_HARD_TOOL_MASK=1: в API уйдут только specs активных групп.
+        self._hard_tool_mask = _hard_tool_mask_enabled()
+        self._all_specs = self._tool_specs()
 
     # ---------- Sticky context (todo + journal tail) ----------
 
@@ -198,6 +202,7 @@ class Agent:
             if unknown:
                 raise ValueError(f"Unknown tool groups: {unknown}. Available: {sorted(available)}")
         self.state.active_groups = groups
+        self._all_specs = self._tool_specs()
         logger.info("Active groups set to: %s", groups or "all")
 
     def force_next_tool(self, tool_name: str) -> None:
@@ -352,7 +357,7 @@ class Agent:
         try:
             resp = self.executor.chat(
                 messages=msgs,
-                tools=self._all_specs,            # Stable prefix — все specs всегда (KV-cache friendly)
+                tools=self._tool_specs(),
                 tool_choice=tool_choice,
             )
             self._llm_error_streak = 0
@@ -494,6 +499,15 @@ class Agent:
         threshold = CONFIG.big_observation_threshold
         if len(body) <= threshold:
             return body
+        if tool_name == "read_observation":
+            head_len = int(threshold * 0.7)
+            head = body[:head_len]
+            return (
+                f"[Large read_observation output not re-saved — {len(body)} chars total]\n"
+                f"--- HEAD ({head_len} chars) ---\n{head}\n"
+                "... [return to the original source file or call read_observation "
+                "with start_line/end_line for a bounded range]"
+            )
         # tc_id (последние 6 символов) добавляем чтобы избежать collision при двух tool_calls
         # одного и того же тула в одной итерации
         suffix = f"-{tc_id[-6:]}" if tc_id else ""
@@ -593,6 +607,11 @@ class Agent:
             )
             self.state.no_progress_iter = 0
 
+    def _tool_specs(self) -> list[dict]:
+        if self._hard_tool_mask:
+            return self.registry.filter_specs(self.state.active_groups)
+        return self.registry.to_openai_specs()
+
     def _save_checkpoint(self) -> None:
         state_dict = {
             "task_id": self.state.task_id,
@@ -668,3 +687,12 @@ class Agent:
             agent.state.forced_next_tool = stuck.get("forced_next_tool")
             agent.context.load_dict(state.get("context", {}))
         return agent
+
+
+def _hard_tool_mask_enabled() -> bool:
+    return os.environ.get("MANUS_HARD_TOOL_MASK", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }

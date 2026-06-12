@@ -61,15 +61,6 @@ MODELS: dict[str, ModelSpec] = {
         supports_tool_calling=True,
         notes="Лучшая coding-модель. Native OpenAI tool_calling. Дефолт для executor.",
     ),
-    "kimi26": ModelSpec(
-        id="moonshotai/Kimi-K2.6",
-        short="kimi26",
-        api_base=_CLOUDRU_BASE,
-        api_key_env="LLM_API_KEY",
-        context_window=262_144,
-        supports_tool_calling=True,
-        notes="Cloud.ru FM API Kimi K2.6 profile for long-context executor workers.",
-    ),
     "minimax": ModelSpec(
         id="MiniMaxAI/MiniMax-M2",
         short="minimax",
@@ -87,6 +78,78 @@ MODELS: dict[str, ModelSpec] = {
         context_window=200_000,
         supports_tool_calling=False,  # кладёт <tool_call> XML в thinking — не подходит
         notes="Хорош для compaction/summary (без tool_calling).",
+    ),
+    "gpt54": ModelSpec(
+        id="openai/gpt-5.4",
+        short="gpt54",
+        api_base=_CLOUDRU_BASE,
+        api_key_env="LLM_API_KEY",
+        context_window=1_050_000,
+        supports_tool_calling=True,
+        notes="Cloud.ru FM API GPT-5.4 profile for executor workers.",
+    ),
+    "claude-opus46": ModelSpec(
+        id="anthropic/claude-opus-4.6",
+        short="claude-opus46",
+        api_base=_CLOUDRU_BASE,
+        api_key_env="LLM_API_KEY",
+        context_window=1_000_000,
+        supports_tool_calling=True,
+        notes="Cloud.ru FM API Claude Opus 4.6 profile for audit and research workers.",
+    ),
+    "qwen36-35b-a3b": ModelSpec(
+        id="Qwen/Qwen3.6-35B-A3B",
+        short="qwen36-35b-a3b",
+        api_base=_CLOUDRU_BASE,
+        api_key_env="LLM_API_KEY",
+        context_window=262_144,
+        supports_tool_calling=True,
+        notes="Cloud.ru FM API Qwen3.6 35B-A3B fast worker profile.",
+    ),
+    "qwen35-397b-a17b": ModelSpec(
+        id="Qwen/Qwen3.5-397B-A17B",
+        short="qwen35-397b-a17b",
+        api_base=_CLOUDRU_BASE,
+        api_key_env="LLM_API_KEY",
+        context_window=262_144,
+        supports_tool_calling=True,
+        notes="Cloud.ru FM API Qwen3.5 397B-A17B quality worker profile.",
+    ),
+    "minimax25": ModelSpec(
+        id="MiniMaxAI/MiniMax-M2.5",
+        short="minimax25",
+        api_base=_CLOUDRU_BASE,
+        api_key_env="LLM_API_KEY",
+        context_window=196_608,
+        supports_tool_calling=True,
+        notes="Cloud.ru FM API MiniMax M2.5 agent/tool-use profile.",
+    ),
+    "kimi26": ModelSpec(
+        id="moonshotai/Kimi-K2.6",
+        short="kimi26",
+        api_base=_CLOUDRU_BASE,
+        api_key_env="LLM_API_KEY",
+        context_window=262_144,
+        supports_tool_calling=True,
+        notes="Cloud.ru FM API Kimi K2.6 profile for long-context executor workers.",
+    ),
+    "deepseek-v4-pro": ModelSpec(
+        id="deepseek-ai/DeepSeek-V4-Pro",
+        short="deepseek-v4-pro",
+        api_base=_CLOUDRU_BASE,
+        api_key_env="LLM_API_KEY",
+        context_window=262_144,
+        supports_tool_calling=True,
+        notes="Cloud.ru FM API DeepSeek V4 Pro profile for reasoning-heavy workers.",
+    ),
+    "glm51": ModelSpec(
+        id="zai-org/GLM-5.1",
+        short="glm51",
+        api_base=_CLOUDRU_BASE,
+        api_key_env="LLM_API_KEY",
+        context_window=262_144,
+        supports_tool_calling=True,
+        notes="Cloud.ru FM API GLM 5.1 profile for executor or summarizer workers.",
     ),
     "qwen35-vlm": ModelSpec(
         id="qwen36-27b-fp8",
@@ -109,12 +172,32 @@ def get_model(short: str) -> ModelSpec:
 
 # ---------- Пути ----------
 
+def _path_env(name: str, default: Path) -> Path:
+    return Path(os.environ.get(name, str(default))).expanduser()
+
+
+def _manus_home() -> Path:
+    return _path_env("MANUS_HOME", Path.home() / "manus")
+
+
+def _manus_workspaces() -> Path:
+    return _path_env("MANUS_WORKSPACE_ROOT", _manus_home() / "workspace")
+
+
+def _manus_secrets() -> Path:
+    return _path_env("MANUS_SECRETS_PATH", Path.home() / ".config" / "manus" / "secrets.env")
+
+
+def _manus_log_dir() -> Path:
+    return _path_env("MANUS_LOG_DIR", _manus_home() / "logs")
+
+
 @dataclass
 class Paths:
-    home: Path = field(default_factory=lambda: Path.home() / "manus")
-    workspaces: Path = field(default_factory=lambda: Path.home() / "manus" / "workspace")
-    secrets: Path = field(default_factory=lambda: Path.home() / ".config" / "manus" / "secrets.env")
-    log_dir: Path = field(default_factory=lambda: Path.home() / "manus" / "logs")
+    home: Path = field(default_factory=_manus_home)
+    workspaces: Path = field(default_factory=_manus_workspaces)
+    secrets: Path = field(default_factory=_manus_secrets)
+    log_dir: Path = field(default_factory=_manus_log_dir)
 
     def ensure(self) -> None:
         for p in [self.home, self.workspaces, self.log_dir, self.secrets.parent]:
@@ -154,7 +237,7 @@ class AgentConfig:
 
     # LLM
     llm_temperature: float = 0.4            # умеренный для агентных задач
-    llm_max_tokens_per_turn: int = 8192
+    llm_max_tokens_per_turn: int = 30_000
     llm_request_timeout_sec: int = 180
     llm_retry_max_attempts: int = 5         # сетевые ошибки
 

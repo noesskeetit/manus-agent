@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import atexit
+import hashlib
 import os
 import shlex
 import subprocess
@@ -76,6 +77,42 @@ def _ensure(sid: str, cwd: Optional[str] = None) -> None:
     time.sleep(0.3)
 
 
+def _workspace_root(ctx: ToolContext) -> Path:
+    workspace = getattr(ctx, "workspace", None)
+    root = getattr(workspace, "root", None)
+    if root is None:
+        raise ValueError("workspace root is required for shell tool isolation")
+    return Path(root).resolve()
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _default_shell_cwd(cwd: Optional[str], ctx: ToolContext) -> Optional[str]:
+    root = _workspace_root(ctx)
+    if cwd:
+        raw_path = Path(cwd).expanduser()
+        resolved = (root / raw_path).resolve() if not raw_path.is_absolute() else raw_path.resolve()
+        if not _is_relative_to(resolved, root):
+            raise ValueError(f"shell cwd is outside workspace: {resolved}")
+        return str(resolved)
+    return str(root)
+
+
+def _workspace_scoped_session_id(session_id: str, ctx: ToolContext) -> str:
+    root = _workspace_root(ctx)
+    digest = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:12]
+    if session_id.startswith(f"{digest}-"):
+        return session_id
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
+    return f"{digest}-{safe or 'default'}"
+
+
 def _capture(sid: str, lines: int = 200) -> str:
     if not _exists(sid):
         return ""
@@ -105,17 +142,22 @@ class ShellExecTool(Tool):
         if not _has_tmux():
             return ToolResult(content="ERROR: tmux is not installed (brew install tmux)", is_error=True)
 
-        _ensure(args.session_id, cwd=args.cwd)
+        try:
+            tmux_session_id = _workspace_scoped_session_id(args.session_id, ctx)
+            cwd = _default_shell_cwd(args.cwd, ctx)
+        except ValueError as exc:
+            return ToolResult(content=f"ERROR: {exc}", is_error=True)
+        _ensure(tmux_session_id, cwd=cwd)
 
         rid = uuid.uuid4().hex[:10]
-        out_file = TMP_DIR / f"{PREFIX}-{_tmux_name(args.session_id)}-{rid}.out"
-        done_file = TMP_DIR / f"{PREFIX}-{_tmux_name(args.session_id)}-{rid}.done"
+        out_file = TMP_DIR / f"{PREFIX}-{_tmux_name(tmux_session_id)}-{rid}.out"
+        done_file = TMP_DIR / f"{PREFIX}-{_tmux_name(tmux_session_id)}-{rid}.done"
 
         wrapped = (
             f"{{ {args.command}\n}} > {shlex.quote(str(out_file))} 2>&1; "
             f"printf '%s' $? > {shlex.quote(str(done_file))}"
         )
-        _tmux("send-keys", "-t", _tmux_name(args.session_id), wrapped, "Enter")
+        _tmux("send-keys", "-t", _tmux_name(tmux_session_id), wrapped, "Enter")
 
         deadline = time.monotonic() + args.timeout_sec
         while time.monotonic() < deadline:
@@ -141,6 +183,7 @@ class ShellExecTool(Tool):
                     raw=output,
                     is_error=(code != 0),
                     metadata={"exit_code": code, "session_id": args.session_id,
+                              "tmux_session_id": tmux_session_id,
                               "output_size": len(output)},
                 )
             time.sleep(0.3)
@@ -152,7 +195,7 @@ class ShellExecTool(Tool):
                      f"Use shell_view / shell_wait / shell_kill_process to manage."),
             raw=partial,
             is_error=False,
-            metadata={"timeout": True, "session_id": args.session_id},
+            metadata={"timeout": True, "session_id": args.session_id, "tmux_session_id": tmux_session_id},
         )
 
 
@@ -170,11 +213,15 @@ class ShellViewTool(Tool):
     args_schema = ShellViewArgs
 
     def execute(self, args: ShellViewArgs, ctx: ToolContext) -> ToolResult:
-        if not _exists(args.session_id):
+        try:
+            tmux_session_id = _workspace_scoped_session_id(args.session_id, ctx)
+        except ValueError as exc:
+            return ToolResult(content=f"ERROR: {exc}", is_error=True)
+        if not _exists(tmux_session_id):
             return ToolResult(content=f"ERROR: session '{args.session_id}' does not exist", is_error=True)
-        out = _capture(args.session_id, lines=args.lines)
+        out = _capture(tmux_session_id, lines=args.lines)
         return ToolResult(content=f"[{args.session_id}] last {args.lines} lines:\n{out}",
-                          metadata={"session_id": args.session_id})
+                          metadata={"session_id": args.session_id, "tmux_session_id": tmux_session_id})
 
 
 # ---------- shell_wait ----------
@@ -192,13 +239,17 @@ class ShellWaitTool(Tool):
     args_schema = ShellWaitArgs
 
     def execute(self, args: ShellWaitArgs, ctx: ToolContext) -> ToolResult:
-        if not _exists(args.session_id):
+        try:
+            tmux_session_id = _workspace_scoped_session_id(args.session_id, ctx)
+        except ValueError as exc:
+            return ToolResult(content=f"ERROR: {exc}", is_error=True)
+        if not _exists(tmux_session_id):
             return ToolResult(content=f"ERROR: session '{args.session_id}' does not exist", is_error=True)
         deadline = time.monotonic() + args.timeout_sec
         last_tail = ""
         stable_since: Optional[float] = None
         while time.monotonic() < deadline:
-            content = _capture(args.session_id, lines=50)
+            content = _capture(tmux_session_id, lines=50)
             lines = [l for l in content.splitlines() if l.strip()]
             tail = "\n".join(lines[-3:]) if lines else ""
             if tail == last_tail:
@@ -208,14 +259,16 @@ class ShellWaitTool(Tool):
                     last_line = lines[-1] if lines else ""
                     if last_line.rstrip().endswith(("$", "#", ">", "➜", "❯")):
                         return ToolResult(content=f"[{args.session_id}] idle\nLast line: {last_line}",
-                                          metadata={"status": "idle"})
+                                          metadata={"status": "idle", "session_id": args.session_id,
+                                                    "tmux_session_id": tmux_session_id})
             else:
                 stable_since = None
                 last_tail = tail
             time.sleep(1)
         return ToolResult(
             content=f"[{args.session_id}] still busy after {args.timeout_sec}s.\nLast tail:\n{last_tail}",
-            metadata={"status": "timeout"},
+            metadata={"status": "timeout", "session_id": args.session_id,
+                      "tmux_session_id": tmux_session_id},
         )
 
 
@@ -235,13 +288,20 @@ class ShellWriteTool(Tool):
     side_effects = True
 
     def execute(self, args: ShellWriteArgs, ctx: ToolContext) -> ToolResult:
-        if not _exists(args.session_id):
+        try:
+            tmux_session_id = _workspace_scoped_session_id(args.session_id, ctx)
+        except ValueError as exc:
+            return ToolResult(content=f"ERROR: {exc}", is_error=True)
+        if not _exists(tmux_session_id):
             return ToolResult(content=f"ERROR: session '{args.session_id}' does not exist", is_error=True)
-        _tmux("send-keys", "-t", _tmux_name(args.session_id), "-l", args.input_text)
+        _tmux("send-keys", "-t", _tmux_name(tmux_session_id), "-l", args.input_text)
         if args.press_enter:
-            _tmux("send-keys", "-t", _tmux_name(args.session_id), "Enter")
+            _tmux("send-keys", "-t", _tmux_name(tmux_session_id), "Enter")
         time.sleep(0.3)
-        return ToolResult(content=f"OK: input sent to {args.session_id}")
+        return ToolResult(
+            content=f"OK: input sent to {args.session_id}",
+            metadata={"session_id": args.session_id, "tmux_session_id": tmux_session_id},
+        )
 
 
 # ---------- shell_kill_process / shell_kill_session ----------
@@ -258,11 +318,18 @@ class ShellKillProcessTool(Tool):
     side_effects = True
 
     def execute(self, args: ShellKillProcessArgs, ctx: ToolContext) -> ToolResult:
-        if not _exists(args.session_id):
+        try:
+            tmux_session_id = _workspace_scoped_session_id(args.session_id, ctx)
+        except ValueError as exc:
+            return ToolResult(content=f"ERROR: {exc}", is_error=True)
+        if not _exists(tmux_session_id):
             return ToolResult(content=f"ERROR: session '{args.session_id}' does not exist", is_error=True)
-        _tmux("send-keys", "-t", _tmux_name(args.session_id), "C-c")
+        _tmux("send-keys", "-t", _tmux_name(tmux_session_id), "C-c")
         time.sleep(0.3)
-        return ToolResult(content=f"OK: SIGINT sent to {args.session_id}")
+        return ToolResult(
+            content=f"OK: SIGINT sent to {args.session_id}",
+            metadata={"session_id": args.session_id, "tmux_session_id": tmux_session_id},
+        )
 
 
 class ShellKillSessionArgs(BaseModel):
@@ -277,10 +344,17 @@ class ShellKillSessionTool(Tool):
     side_effects = True
 
     def execute(self, args: ShellKillSessionArgs, ctx: ToolContext) -> ToolResult:
-        if not _exists(args.session_id):
+        try:
+            tmux_session_id = _workspace_scoped_session_id(args.session_id, ctx)
+        except ValueError as exc:
+            return ToolResult(content=f"ERROR: {exc}", is_error=True)
+        if not _exists(tmux_session_id):
             return ToolResult(content=f"OK: session '{args.session_id}' did not exist")
-        _tmux("kill-session", "-t", _tmux_name(args.session_id))
-        return ToolResult(content=f"OK: killed {args.session_id}")
+        _tmux("kill-session", "-t", _tmux_name(tmux_session_id))
+        return ToolResult(
+            content=f"OK: killed {args.session_id}",
+            metadata={"session_id": args.session_id, "tmux_session_id": tmux_session_id},
+        )
 
 
 class ShellListArgs(BaseModel):
@@ -294,13 +368,24 @@ class ShellListTool(Tool):
     args_schema = ShellListArgs
 
     def execute(self, args, ctx: ToolContext) -> ToolResult:
+        try:
+            root = _workspace_root(ctx)
+        except ValueError as exc:
+            return ToolResult(content=f"ERROR: {exc}", is_error=True)
+        digest = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:12]
         r = _tmux("list-sessions", "-F", "#{session_name}", check=False)
         if r.returncode != 0:
             return ToolResult(content="(no sessions)")
-        names = [n.replace(f"{PREFIX}-", "", 1)
-                 for n in r.stdout.strip().splitlines()
-                 if n.startswith(f"{PREFIX}-")]
-        return ToolResult(content="Sessions: " + (", ".join(names) if names else "(none)"))
+        internal_prefix = f"{PREFIX}-{digest}-"
+        names = [
+            n.replace(internal_prefix, "", 1)
+            for n in r.stdout.strip().splitlines()
+            if n.startswith(internal_prefix)
+        ]
+        return ToolResult(
+            content="Sessions: " + (", ".join(names) if names else "(none)"),
+            metadata={"session_ids": names, "workspace_scope": digest},
+        )
 
 
 def make_shell_tools() -> list[Tool]:
