@@ -44,6 +44,13 @@ _CLOUDRU_BASE = os.environ.get(
 )
 
 
+# Cloud.ru ML Inference (vLLM) — per-deployment URL, обязательно задавать MANUS_VLM_BASE
+# если используешь vision-модель. Дефолт-плейсхолдер чтобы импорт не падал.
+_VLM_BASE = os.environ.get(
+    "MANUS_VLM_BASE",
+    "https://your-vlm-deployment.modelrun.inference.cloud.ru/v1",
+)
+
 MODELS: dict[str, ModelSpec] = {
     "minimax": ModelSpec(
         id="MiniMaxAI/MiniMax-M2",
@@ -98,6 +105,17 @@ MODELS: dict[str, ModelSpec] = {
         context_window=262_144,
         supports_tool_calling=True,
         notes="Cloud.ru FM API GLM 5.1 profile for executor or summarizer workers.",
+    ),
+    "qwen35-vlm": ModelSpec(
+        id="qwen36-27b-fp8",
+        short="qwen35-vlm",
+        api_base=_VLM_BASE,
+        api_key_env="LLM_API_KEY",
+        context_window=128_000,
+        supports_tool_calling=True,
+        notes=("Vision-роль: Qwen 3.5 27B FP8 на ML Inference vLLM. Требует "
+               "MANUS_VLM_BASE env var с URL deployment'а. Единственный "
+               "multimodal-профиль; текстовые роли остаются на kimi26."),
     ),
 }
 
