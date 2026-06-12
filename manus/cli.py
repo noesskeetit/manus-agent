@@ -174,37 +174,6 @@ def groups():
     console.print("[dim]Tools marked 'always_available' are never masked.[/]")
 
 
-@app.command()
-def pac1(
-    benchmark: str = typer.Option("bitgn/pac1-dev", "--benchmark", "-b",
-                                    help="bitgn/pac1-dev (43 tasks) или bitgn/pac1-prod (104)"),
-    model: Optional[str] = typer.Option(None, "--model", "-m"),
-    summarizer: Optional[str] = typer.Option(None, "--summarizer"),
-    limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Сколько задач максимум"),
-    tasks: Optional[str] = typer.Option(None, "--tasks", "-t",
-                                          help="Только эти task_id через запятую (t01,t02,...)"),
-    no_submit: bool = typer.Option(False, "--no-submit", help="Не сабмитить run на сервер"),
-    name: str = typer.Option("manus-agent-v1", "--name", help="Имя run'а в leaderboard"),
-    max_iter: int = typer.Option(30, "--max-iter", help="Макс iterations per trial"),
-):
-    """Запустить наш agent на BitGN PAC1 benchmark."""
-    from .pac1_runner import run_pac1
-    task_filter = [t.strip() for t in tasks.split(",")] if tasks else None
-    try:
-        run_pac1(
-            benchmark_id=benchmark,
-            executor_model=model,
-            summarizer_model=summarizer,
-            limit=limit,
-            task_filter=task_filter,
-            submit=not no_submit,
-            run_name=name,
-            max_iter_per_trial=max_iter,
-        )
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Interrupted by user.[/]")
-
-
 @app.command(name="check")
 def check():
     """Sanity-check окружения (API key, deps, paths)."""
@@ -213,7 +182,7 @@ def check():
     issues = 0
     console.print("[bold]Manus Cloud — environment check[/]\n")
     # API key
-    for short in ("qwen-coder", "minimax", "glm"):
+    for short in ("kimi26", "minimax", "glm"):
         m = get_model(short)
         key = os.environ.get(m.api_key_env, "")
         ok = bool(key)

@@ -45,7 +45,7 @@ class SpawnSubagentArgs(BaseModel):
     in_scope: Optional[list[str]] = Field(None, description="Что входит в скоуп подзадачи")
     out_of_scope: Optional[list[str]] = Field(None, description="Что НЕ входит (явные ограничения)")
     deliverables: Optional[list[str]] = Field(None, description="Что должно быть на выходе (артефакты)")
-    model: Optional[str] = Field(None, description="Модель для sub-agent'а (qwen-coder|minimax|glm)")
+    model: Optional[str] = Field(None, description="Модель для sub-agent'а (kimi26|minimax|glm)")
     max_iterations: Optional[int] = Field(None, description="Макс iterations (default по роли)")
     timeout_sec: int = Field(1800, description="Hard timeout (секунды)")
     active_groups_override: Optional[list[str]] = Field(

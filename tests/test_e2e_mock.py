@@ -26,7 +26,7 @@ from manus.tools import build_default_registry
 class MockLLMClient:
     """Прокси над реальным API — возвращает заранее заготовленные ответы по очереди."""
 
-    def __init__(self, scenario: list[dict], short: str = "qwen-coder"):
+    def __init__(self, scenario: list[dict], short: str = "kimi26"):
         from manus.config import get_model
         self.model = get_model(short)
         self.scenario = scenario

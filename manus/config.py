@@ -29,7 +29,7 @@ _load_env_files()
 class ModelSpec:
     """Описание одной модели — id, провайдер, контекст, фичи."""
     id: str                            # cloudru/Qwen/Qwen3-Coder-Next
-    short: str                         # qwen-coder
+    short: str                         # kimi26
     api_base: str
     api_key_env: str                   # имя env-переменной с ключом
     context_window: int                # макс tokens
@@ -43,24 +43,8 @@ _CLOUDRU_BASE = os.environ.get(
     "https://foundation-models.api.cloud.ru/v1",
 )
 
-# Cloud.ru ML Inference (vLLM) — per-deployment URL, обязательно задавать MANUS_VLM_BASE
-# если используешь модели из vLLM-группы. Дефолт-плейсхолдер чтобы импорт не падал.
-_VLM_BASE = os.environ.get(
-    "MANUS_VLM_BASE",
-    "https://your-vlm-deployment.modelrun.inference.cloud.ru/v1",
-)
-
 
 MODELS: dict[str, ModelSpec] = {
-    "qwen-coder": ModelSpec(
-        id="Qwen/Qwen3-Coder-Next",
-        short="qwen-coder",
-        api_base=_CLOUDRU_BASE,
-        api_key_env="LLM_API_KEY",
-        context_window=256_000,
-        supports_tool_calling=True,
-        notes="Лучшая coding-модель. Native OpenAI tool_calling. Дефолт для executor.",
-    ),
     "minimax": ModelSpec(
         id="MiniMaxAI/MiniMax-M2",
         short="minimax",
@@ -78,42 +62,6 @@ MODELS: dict[str, ModelSpec] = {
         context_window=200_000,
         supports_tool_calling=False,  # кладёт <tool_call> XML в thinking — не подходит
         notes="Хорош для compaction/summary (без tool_calling).",
-    ),
-    "gpt54": ModelSpec(
-        id="openai/gpt-5.4",
-        short="gpt54",
-        api_base=_CLOUDRU_BASE,
-        api_key_env="LLM_API_KEY",
-        context_window=1_050_000,
-        supports_tool_calling=True,
-        notes="Cloud.ru FM API GPT-5.4 profile for executor workers.",
-    ),
-    "claude-opus46": ModelSpec(
-        id="anthropic/claude-opus-4.6",
-        short="claude-opus46",
-        api_base=_CLOUDRU_BASE,
-        api_key_env="LLM_API_KEY",
-        context_window=1_000_000,
-        supports_tool_calling=True,
-        notes="Cloud.ru FM API Claude Opus 4.6 profile for audit and research workers.",
-    ),
-    "qwen36-35b-a3b": ModelSpec(
-        id="Qwen/Qwen3.6-35B-A3B",
-        short="qwen36-35b-a3b",
-        api_base=_CLOUDRU_BASE,
-        api_key_env="LLM_API_KEY",
-        context_window=262_144,
-        supports_tool_calling=True,
-        notes="Cloud.ru FM API Qwen3.6 35B-A3B fast worker profile.",
-    ),
-    "qwen35-397b-a17b": ModelSpec(
-        id="Qwen/Qwen3.5-397B-A17B",
-        short="qwen35-397b-a17b",
-        api_base=_CLOUDRU_BASE,
-        api_key_env="LLM_API_KEY",
-        context_window=262_144,
-        supports_tool_calling=True,
-        notes="Cloud.ru FM API Qwen3.5 397B-A17B quality worker profile.",
     ),
     "minimax25": ModelSpec(
         id="MiniMaxAI/MiniMax-M2.5",
@@ -150,16 +98,6 @@ MODELS: dict[str, ModelSpec] = {
         context_window=262_144,
         supports_tool_calling=True,
         notes="Cloud.ru FM API GLM 5.1 profile for executor or summarizer workers.",
-    ),
-    "qwen35-vlm": ModelSpec(
-        id="qwen36-27b-fp8",
-        short="qwen35-vlm",
-        api_base=_VLM_BASE,
-        api_key_env="LLM_API_KEY",
-        context_window=128_000,
-        supports_tool_calling=True,
-        notes=("Qwen 3.5 27B FP8 на ML Inference vLLM. Требует MANUS_VLM_BASE env var "
-               "с URL твоего deployment'а. Поддерживает tool_calling, thinking опционально."),
     ),
 }
 
@@ -212,7 +150,7 @@ PATHS = Paths()
 @dataclass
 class AgentConfig:
     # Модели по ролям
-    executor_model: str = "qwen-coder"      # делает работу, native tool_calling
+    executor_model: str = "kimi26"          # делает работу, native tool_calling
     planner_model: str = "minimax"          # для длинных задач (>3h)
     summarizer_model: str = "glm"           # сжимает старые turns
 

@@ -18,13 +18,13 @@ pytestmark = [
 
 
 def test_basic_chat():
-    client = LLMClient("qwen-coder")
+    client = LLMClient("kimi26")
     resp = client.chat(
         messages=[
             {"role": "system", "content": "You are a helpful assistant. Respond concisely in Russian."},
             {"role": "user", "content": "Скажи одно число от 1 до 10."},
         ],
-        max_tokens=50,
+        max_tokens=300,
     )
     print(f"[basic] content: {resp.content!r}")
     print(f"[basic] tokens: prompt={resp.prompt_tokens}, completion={resp.completion_tokens}")
@@ -33,7 +33,7 @@ def test_basic_chat():
 
 
 def test_tool_calling():
-    client = LLMClient("qwen-coder")
+    client = LLMClient("kimi26")
     tools = [{
         "type": "function",
         "function": {
