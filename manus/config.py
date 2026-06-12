@@ -61,6 +61,15 @@ MODELS: dict[str, ModelSpec] = {
         supports_tool_calling=True,
         notes="Лучшая coding-модель. Native OpenAI tool_calling. Дефолт для executor.",
     ),
+    "kimi26": ModelSpec(
+        id="moonshotai/Kimi-K2.6",
+        short="kimi26",
+        api_base=_CLOUDRU_BASE,
+        api_key_env="LLM_API_KEY",
+        context_window=262_144,
+        supports_tool_calling=True,
+        notes="Cloud.ru FM API Kimi K2.6 profile for long-context executor workers.",
+    ),
     "minimax": ModelSpec(
         id="MiniMaxAI/MiniMax-M2",
         short="minimax",
